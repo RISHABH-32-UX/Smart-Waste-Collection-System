@@ -17,6 +17,8 @@ public class SupervisorComplaintController {
   public List<ComplaintService.ComplaintView> queue() { return complaints.verificationQueue(); }
   @GetMapping("/assignment-ready")
   public List<ComplaintService.ComplaintView> assignmentReady() { return complaints.assignmentReady(); }
+  @GetMapping("/complaints/{id}")
+  public ComplaintService.ComplaintDetail detail(@PathVariable UUID id) { return complaints.detailForSupervisor(id); }
   @PostMapping("/complaints/{id}/verification")
   public ComplaintService.ComplaintView verify(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                                                 @Valid @RequestBody VerificationBody body) {

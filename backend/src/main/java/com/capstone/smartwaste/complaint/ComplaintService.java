@@ -63,6 +63,27 @@ public class ComplaintService {
     return rows.get(0);
   }
 
+  /** Full evidence package used by the supervisor before verification or task allocation. */
+  public ComplaintDetail detailForSupervisor(UUID complaintId) {
+    List<ComplaintDetail> details = jdbc.query("""
+      select c.id,c.status,c.description,ST_Y(c.location::geometry) latitude,ST_X(c.location::geometry) longitude,
+             c.ai_severity,c.created_at,c.updated_at,
+             u.full_name reporter_name,u.email reporter_email,u.phone reporter_phone
+      from complaints c join app_users u on u.id=c.citizen_id
+      where c.id=?
+      """, (rs, row) -> new ComplaintDetail(
+        view(rs), new Reporter(rs.getString("reporter_name"), rs.getString("reporter_email"), rs.getString("reporter_phone")), List.of()), complaintId);
+    if (details.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Complaint not found");
+    List<ComplaintMedia> media = jdbc.query("""
+      select m.id,m.original_name,m.content_type,m.size_bytes,cm.kind
+      from complaint_media cm join media_assets m on m.id=cm.asset_id
+      where cm.complaint_id=? order by case cm.kind when 'BEFORE' then 1 else 2 end,m.created_at
+      """, (rs, row) -> new ComplaintMedia(UUID.fromString(rs.getString("id")), rs.getString("original_name"),
+        rs.getString("content_type"), rs.getLong("size_bytes"), rs.getString("kind")), complaintId);
+    ComplaintDetail detail = details.get(0);
+    return new ComplaintDetail(detail.complaint(), detail.reporter(), media);
+  }
+
   @Transactional
   public ComplaintView verify(UUID complaintId, UUID supervisorId, boolean approved, String severity) {
     int updated = jdbc.update("update complaints set status=?,ai_severity=coalesce(?,ai_severity),updated_at=now(),version=version+1 where id=? and status='PENDING_VERIFICATION'",
@@ -83,4 +104,7 @@ public class ComplaintService {
   public record CreateComplaint(String description, double latitude, double longitude, List<UUID> beforeAssetIds) { }
   public record ComplaintView(UUID id, String status, String description, double latitude, double longitude,
                               String severity, Instant createdAt, Instant updatedAt) { }
+  public record Reporter(String fullName, String email, String phone) { }
+  public record ComplaintMedia(UUID id, String filename, String contentType, long sizeBytes, String kind) { }
+  public record ComplaintDetail(ComplaintView complaint, Reporter reporter, List<ComplaintMedia> media) { }
 }

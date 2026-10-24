@@ -45,3 +45,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) throw new Error((await response.text()) || `Request failed (${response.status})`);
   return response.status === 204 ? (undefined as T) : response.json() as Promise<T>;
 }
+
+// Images are protected resources, so a normal <img> URL cannot be used: it
+// cannot attach the JWT authorization header. Fetch the image as a Blob first
+// and render the returned object URL instead.
+export async function authorizedBlob(path: string): Promise<Blob> {
+  const token = getAccessToken() ?? getSession()?.accessToken;
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) throw new Error((await response.text()) || `Unable to load file (${response.status})`);
+  return response.blob();
+}
