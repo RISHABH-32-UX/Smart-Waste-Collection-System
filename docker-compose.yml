@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: smartwaste
+      POSTGRES_USER: smartwaste
+      POSTGRES_PASSWORD: smartwaste
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartwaste -d smartwaste"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+
+volumes:
+  postgis_data:
+

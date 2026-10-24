@@ -1,0 +1,15 @@
+.idea/
+.vscode/
+node_modules/
+.next/
+target/
+*.log
+.env
+backend/var/
+# AI coding tool settings
+.claude/
+.kilo/
+
+# Frontend build artifacts
+frontend/tsconfig.tsbuildinfo
+
