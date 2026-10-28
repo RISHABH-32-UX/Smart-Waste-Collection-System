@@ -44,6 +44,23 @@ export function WorkerTaskWorkspace({ taskId, onClose, onResolutionSubmitted }: 
     setFiles(selected); setMessage("");
   }
 
+  async function markArrived() {
+    setBusy(true);
+    setMessage("");
+    try {
+      await api(`/worker/tasks/${taskId}/arrive`, { method: "POST" });
+      setDetail(current => current ? { ...current, task: { ...current.task, status: "ON_SITE" } } : current);
+      setMessage("You have arrived at the collection site. You can now take after-cleanup photos and submit your work.");
+      setIsError(false);
+      onResolutionSubmitted();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Unable to update arrival status.");
+      setIsError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitCleanup() {
     if (!detail || files.length === 0) {
       setMessage("Add at least one after-cleanup photo before submitting."); setIsError(true); return;
@@ -72,6 +89,7 @@ export function WorkerTaskWorkspace({ taskId, onClose, onResolutionSubmitted }: 
   if (!detail) return <section className="card"><p className="alert-error">{message}</p><button className="btn-secondary mt-4" onClick={onClose}>Back to my tasks</button></section>;
 
   const primaryLocation = detail.complaints[0];
+  const isAssigned = detail.task.status === "ASSIGNED" || detail.task.status === "ACCEPTED";
   const canSubmit = detail.task.status === "ON_SITE" || detail.task.status === "REWORK_REQUIRED";
   const beforePhotos = (complaint: TaskComplaint) => complaint.media.filter(media => media.kind === "BEFORE");
   const afterPhotos = (complaint: TaskComplaint) => complaint.media.filter(media => media.kind === "AFTER");
@@ -81,7 +99,19 @@ export function WorkerTaskWorkspace({ taskId, onClose, onResolutionSubmitted }: 
       <div><p className="eyebrow">Task workspace</p><h2 className="mt-1 text-xl font-bold text-slate-950">Assigned collection site</h2><p className="mt-1 text-sm text-slate-600">Review the report, navigate to the site, then submit proof of cleanup.</p></div>
       <button className="btn-secondary" onClick={onClose}>Back to tasks</button>
     </div>
-    <div className="flex flex-wrap gap-2"><StatusBadge value={detail.task.priority} /><StatusBadge value={detail.task.status} /></div>
+    <div className="flex flex-wrap items-center gap-2">
+      <StatusBadge value={detail.task.priority} />
+      <StatusBadge value={detail.task.status} />
+      {isAssigned && (
+        <button
+          className="btn-primary ml-auto text-sm"
+          disabled={busy}
+          onClick={markArrived}
+        >
+          {busy ? "Updating..." : "✅ Reached Destination / Start Work"}
+        </button>
+      )}
+    </div>
     <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-700">Due: <strong>{detail.task.dueAt ? new Date(detail.task.dueAt).toLocaleString() : "Not set"}</strong></div>
 
     <section>
@@ -103,6 +133,21 @@ export function WorkerTaskWorkspace({ taskId, onClose, onResolutionSubmitted }: 
     </section>
 
     {message && <p className={isError ? "alert-error" : "alert-success"}>{message}</p>}
+    {isAssigned && (
+      <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+        <p className="text-sm font-bold text-blue-950">Reached the cleanup site?</p>
+        <p className="mt-1 text-sm leading-6 text-blue-900">
+          Once you have reached your destination, click below to proceed to the task and unlock after-cleanup photo submission.
+        </p>
+        <button
+          className="btn-primary mt-3"
+          disabled={busy}
+          onClick={markArrived}
+        >
+          {busy ? "Updating..." : "✅ Reached Destination / Proceed to Task"}
+        </button>
+      </section>
+    )}
     {canSubmit && <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
       <p className="text-sm font-bold text-emerald-950">Submit cleanup for supervisor verification</p>
       <p className="mt-1 text-sm leading-6 text-emerald-900">Upload at least one real-time after-cleanup image. The complaint is closed only when the supervisor accepts the evidence.</p>

@@ -14,6 +14,7 @@ export default function WorkerPage() {
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [countdowns, setCountdowns] = useState<Record<string, string>>({});
+  const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     const updateCountdowns = () => {
@@ -52,34 +53,21 @@ export default function WorkerPage() {
 
   useEffect(() => { refresh(); }, []);
 
-  async function sendLocation(taskId: string) {
-    if (!navigator.geolocation) {
-      setMessage("This browser does not support location services."); setIsError(true); return;
-    }
-    navigator.geolocation.getCurrentPosition(async position => {
-      try {
-        const result = await api<{ insideGeofence: boolean; entryConfirmed: boolean; taskStatus: string }>(`/worker/tasks/${taskId}/location-events`, {
-          method: "POST",
-          body: JSON.stringify({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracyMeters: position.coords.accuracy,
-            capturedAt: new Date(position.timestamp).toISOString(), // Use the actual timestamp from the device
-          }),
-        });
-        setMessage(result.entryConfirmed ? "On-site check-in confirmed. You can now submit cleanup evidence." : result.insideGeofence ? "Inside the site. Send one more accurate GPS point to confirm arrival." : "You are outside the assigned geofence.");
-        setIsError(!result.entryConfirmed);
-        await refresh();
-      } catch (cause) {
-        console.error("Location check failed:", cause);
-        setMessage(cause instanceof Error ? cause.message : "Location check failed.");
-        setIsError(true);
-      }
-    }, () => {
-      console.error("Location permission denied");
-      setMessage("Location permission is required to check in at the collection site.");
+  async function proceedToTask(taskId: string) {
+    setBusyTaskId(taskId);
+    setMessage("");
+    try {
+      await api(`/worker/tasks/${taskId}/arrive`, { method: "POST" });
+      setMessage("Arrived on-site! You can now view the task and upload your cleanup proof.");
+      setIsError(false);
+      await refresh();
+      setSelectedTaskId(taskId);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Failed to proceed to task.");
       setIsError(true);
-    }, { enableHighAccuracy: true, timeout: 15000 });
+    } finally {
+      setBusyTaskId(null);
+    }
   }
 
   return <RequireRole role="WORKER">
@@ -87,7 +75,7 @@ export default function WorkerPage() {
       <div className="page-header">
         <p className="eyebrow">Field operations</p>
         <h1 className="page-title">Assigned collection tasks</h1>
-        <p className="page-subtitle">Open a task to view the citizen report, its photos, and the assigned map location. Check in at the site before submitting cleanup proof.</p>
+        <p className="page-subtitle">Open a task to view the citizen report, its photos, and the assigned map location. Click 'Proceed to Task' once you reach the site to submit proof of cleanup.</p>
       </div>
       {message && <p className={`mb-4 ${isError ? "alert-error" : "alert-success"}`}>{message}</p>}
 
@@ -98,7 +86,15 @@ export default function WorkerPage() {
           <p className="mt-3 text-sm text-slate-700">Due: {task.dueAt ? new Date(task.dueAt).toLocaleString() : "Not set"}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button className="btn-primary" disabled={task.status === "QUEUED"} onClick={() => setSelectedTaskId(task.id)}>View task & map</button>
-            {(["ASSIGNED", "ACCEPTED", "ON_SITE"] as string[]).includes(task.status) && <button className="btn-secondary" onClick={() => sendLocation(task.id)}>📍 Verify my location</button>}
+            {(["ASSIGNED", "ACCEPTED"] as string[]).includes(task.status) && (
+              <button
+                className="btn-secondary"
+                disabled={busyTaskId === task.id}
+                onClick={() => proceedToTask(task.id)}
+              >
+                {busyTaskId === task.id ? "Updating..." : "✅ Reached Destination / Proceed to Task"}
+              </button>
+            )}
           </div>
         </article>)}
         {tasks.length === 0 && <p className="empty-state md:col-span-2">No tasks are assigned to you yet.</p>}
