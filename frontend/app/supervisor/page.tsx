@@ -13,9 +13,43 @@ type QueueTask = { id: string; status: string; priority: string; queuedForAt?: s
 type CreatedTask = { id: string; status: string; assignedWorkerName?: string; queuedWorkerName?: string };
 type AssignmentMode = "IMMEDIATE" | "QUEUE_2_HOURS" | "QUEUE_3_HOURS";
 
-const priorityOptions = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
-
 export default function SupervisorPage() {
+  const [countdowns, setCountdowns] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdowns(prev => {
+        const newCountdowns: Record<string, string> = {};
+        Object.entries(prev).forEach(([taskId, queuedForAt]) => {
+          const dueTime = new Date(queuedForAt).getTime();
+          const now = Date.now();
+          const diff = dueTime - now;
+          if (diff > 0) {
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            newCountdowns[taskId] = `${hours}h ${minutes}m`;
+          } else {
+            newCountdowns[taskId] = "0h 0m";
+          }
+        });
+        return newCountdowns;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const getCountdown = (queuedForAt?: string) => {
+    if (!queuedForAt) return "";
+    const dueTime = new Date(queuedForAt).getTime();
+    const now = Date.now();
+    const diff = dueTime - now;
+    if (diff <= 0) return "0h 0m";
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
+  };
+
+  const priorityOptions = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
   const [verificationItems, setVerificationItems] = useState<Complaint[]>([]);
   const [readyItems, setReadyItems] = useState<Complaint[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -30,6 +64,22 @@ export default function SupervisorPage() {
   const [isError, setIsError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reviewingTaskId, setReviewingTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const updateCountdowns = () => {
+      const newCountdowns: Record<string, string> = {};
+      queuedTasks.forEach(task => {
+        if (task.queuedForAt) {
+          newCountdowns[task.id] = getCountdown(task.queuedForAt);
+        }
+      });
+      setCountdowns(newCountdowns);
+    };
+
+    updateCountdowns();
+    const interval = setInterval(updateCountdowns, 1000);
+    return () => clearInterval(interval);
+  }, [queuedTasks]);
 
   const selectedWorker = useMemo(() => workers.find(worker => worker.id === workerId), [workers, workerId]);
   const freeWorkers = useMemo(() => workers.filter(worker => worker.availability === "FREE"), [workers]);
@@ -79,7 +129,13 @@ export default function SupervisorPage() {
       setWorkerId(freeWorkers[0].id); setMode("IMMEDIATE"); return;
     }
     if (worker?.availability === "FREE") setMode("IMMEDIATE");
-    else if (worker) setMode("QUEUE_2_HOURS");
+    else if (worker) {
+      if (worker.queuedTaskCount > 0) {
+        setMode("QUEUE_3_HOURS");
+      } else {
+        setMode("QUEUE_2_HOURS");
+      }
+    }
   }
 
   async function allocate() {
@@ -146,13 +202,13 @@ export default function SupervisorPage() {
 
         <aside className="card h-fit lg:sticky lg:top-6">
           <p className="eyebrow">Step 3</p><h2 className="mt-1 text-lg font-bold">Worker allocation</h2>
-          {!selected ? <p className="mt-4 text-sm leading-6 text-slate-600">Approve a report or choose one from the verified list to assign a worker. A 50 metre geofence is created automatically around the report location.</p> : <div className="mt-4 space-y-4"><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Selected report</p><p className="mt-1 text-sm font-medium">{selected.description}</p><button className="mt-3 text-sm font-semibold text-emerald-700 underline underline-offset-2" onClick={() => setDetailComplaintId(selected.id)}>View full citizen report</button></div><div><label className="field-label" htmlFor="worker">Worker</label><select id="worker" className="field" value={workerId} onChange={event => selectWorker(event.target.value)}><option value="">Select a worker</option>{workers.map(worker => <option key={worker.id} value={worker.id} disabled={worker.availability === "BUSY" && (worker.queuedTaskCount > 0 || freeWorkers.length > 0)}>{worker.fullName} — {worker.availability === "FREE" ? "Free now" : `${worker.activeTaskCount} active task${worker.activeTaskCount === 1 ? "" : "s"}${worker.queuedTaskCount ? ", queue full" : ""}`}</option>)}</select>{workers.length === 0 && <p className="field-help text-red-700">No active worker accounts exist. Ask an admin to create or activate a worker.</p>}{freeWorkers.length > 0 && <p className="field-help text-emerald-800">{freeWorkers.length} free worker{freeWorkers.length === 1 ? " is" : "s are"} available, so this task will be assigned immediately.</p>}</div>{selectedWorker && <div className={`rounded-lg p-3 text-sm ${selectedWorker.availability === "FREE" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}><strong>{selectedWorker.fullName}</strong> is {selectedWorker.availability === "FREE" ? "free and can receive this task now." : `busy with ${selectedWorker.activeTaskCount} active task(s).`}</div>}<div><label className="field-label" htmlFor="assignmentMode">Assignment</label><select id="assignmentMode" className="field" value={mode} onChange={event => setMode(event.target.value as AssignmentMode)}><option value="IMMEDIATE" disabled={selectedWorker?.availability !== "FREE"}>Assign immediately</option><option value="QUEUE_2_HOURS" disabled={freeWorkers.length > 0 || selectedWorker?.availability !== "BUSY" || selectedWorker?.queuedTaskCount > 0}>Queue after 2 hours</option><option value="QUEUE_3_HOURS" disabled={freeWorkers.length > 0 || selectedWorker?.availability !== "BUSY" || selectedWorker?.queuedTaskCount > 0}>Queue after 3 hours</option></select><p className="field-help">When a free worker exists, the task is assigned immediately. Otherwise queued work is assigned after the selected delay when any worker becomes free.</p></div><div><label className="field-label" htmlFor="priority">Priority</label><select id="priority" className="field" value={priority} onChange={event => setPriority(event.target.value)}>{priorityOptions.map(value => <option key={value}>{value}</option>)}</select></div><div className="flex gap-2"><button className="btn-primary flex-1" disabled={busy || !selectedWorker} onClick={allocate}>{busy ? "Saving…" : mode === "IMMEDIATE" ? "Assign task" : "Queue task"}</button><button className="btn-secondary" disabled={busy} onClick={() => setSelected(null)}>Cancel</button></div></div>}
+          {!selected ? <p className="mt-4 text-sm leading-6 text-slate-600">Approve a report or choose one from the verified list to assign a worker. A 50 metre geofence is created automatically around the report location.</p> : <div className="mt-4 space-y-4"><div className="rounded-lg bg-slate-50 p-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Selected report</p><p className="mt-1 text-sm font-medium">{selected.description}</p><button className="mt-3 text-sm font-semibold text-emerald-700 underline underline-offset-2" onClick={() => setDetailComplaintId(selected.id)}>View full citizen report</button></div><div><label className="field-label" htmlFor="worker">Worker</label><select id="worker" className="field" value={workerId} onChange={event => selectWorker(event.target.value)}><option value="">Select a worker</option>{workers.map(worker => <option key={worker.id} value={worker.id} disabled={worker.availability === "BUSY" && (worker.queuedTaskCount > 0 || freeWorkers.length > 0)}>{worker.fullName} — {worker.availability === "FREE" ? "Free now" : `${worker.activeTaskCount} active task${worker.activeTaskCount === 1 ? "" : "s"}${worker.queuedTaskCount ? `, ${worker.queuedTaskCount} queued task${worker.queuedTaskCount === 1 ? "" : "s"}` : ""}`}</option>)}</select>{workers.length === 0 && <p className="field-help text-red-700">No active worker accounts exist. Ask an admin to create or activate a worker.</p>}{freeWorkers.length > 0 && <p className="field-help text-emerald-800">{freeWorkers.length} free worker{freeWorkers.length === 1 ? " is" : "s are"} available, so this task will be assigned immediately.</p>}</div>{selectedWorker && <div className={`rounded-lg p-3 text-sm ${selectedWorker.availability === "FREE" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}><strong>{selectedWorker.fullName}</strong> is {selectedWorker.availability === "FREE" ? "free and can receive this task now." : `busy with ${selectedWorker.activeTaskCount} active task(s).`}</div>}<div><label className="field-label" htmlFor="assignmentMode">Assignment</label><select id="assignmentMode" className="field" value={mode} onChange={event => setMode(event.target.value as AssignmentMode)}><option value="IMMEDIATE" disabled={selectedWorker?.availability !== "FREE"}>Assign immediately</option><option value="QUEUE_2_HOURS" disabled={freeWorkers.length > 0 || selectedWorker?.availability !== "BUSY" || selectedWorker?.queuedTaskCount > 0}>Queue after 2 hours</option><option value="QUEUE_3_HOURS" disabled={freeWorkers.length > 0 || selectedWorker?.availability !== "BUSY" || selectedWorker?.queuedTaskCount > 0}>Queue after 3 hours</option></select><p className="field-help">When a free worker exists, the task is assigned immediately. Otherwise queued work is assigned after the selected delay when any worker becomes free.</p></div><div><label className="field-label" htmlFor="priority">Priority</label><select id="priority" className="field" value={priority} onChange={event => setPriority(event.target.value)}>{priorityOptions.map(value => <option key={value}>{value}</option>)}</select></div><div className="flex gap-2"><button className="btn-primary flex-1" disabled={busy || !selectedWorker} onClick={allocate}>{busy ? "Saving…" : mode === "IMMEDIATE" ? "Assign task" : "Queue task"}</button><button className="btn-secondary" disabled={busy} onClick={() => setSelected(null)}>Cancel</button></div></div>}
         </aside>
       </section>
 
       <SupervisorResolutionReview tasks={resolutionReviewTasks} busyTaskId={reviewingTaskId} onReview={reviewResolution} />
 
-      <section className="card"><div className="mb-4 flex items-center justify-between"><div><p className="eyebrow">Delayed assignments</p><h2 className="mt-1 text-lg font-bold">Queued work</h2></div><span className="badge bg-violet-50 text-violet-800 ring-violet-600/20">{queuedTasks.length} queued</span></div><div className="space-y-2">{queuedTasks.map(task => <div className="flex flex-col gap-1 rounded-lg border border-slate-200 p-3 text-sm sm:flex-row sm:items-center sm:justify-between" key={task.id}><span><strong>{task.queuedWorkerName ?? "Worker pending"}</strong> · {task.priority} priority</span><span className="text-slate-500">{task.queuedForAt ? `Eligible from ${new Date(task.queuedForAt).toLocaleString()}` : "Awaiting reassignment"}</span></div>)}{queuedTasks.length === 0 && <p className="empty-state">No delayed tasks are queued.</p>}</div></section>
+      <section className="card"><div className="mb-4 flex items-center justify-between"><div><p className="eyebrow">Delayed assignments</p><h2 className="mt-1 text-lg font-bold">Queued work</h2></div><span className="badge bg-violet-50 text-violet-800 ring-violet-600/20">{queuedTasks.length} queued</span></div><div className="space-y-2">{queuedTasks.map(task => <div className="flex flex-col gap-1 rounded-lg border border-slate-200 p-3 text-sm sm:flex-row sm:items-center sm:justify-between" key={task.id}><span><strong>{task.queuedWorkerName ?? "Worker pending"}</strong> · {task.priority} priority</span><span className="text-slate-500">{task.queuedForAt ? `Eligible in ${countdowns[task.id] ?? getCountdown(task.queuedForAt)} (${new Date(task.queuedForAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})` : "Awaiting reassignment"}</span></div>)}{queuedTasks.length === 0 && <p className="empty-state">No delayed tasks are queued.</p>}</div></section>
       <ComplaintDetailDialog complaintId={detailComplaintId} onClose={() => setDetailComplaintId(null)} />
     </main>
   </RequireRole>;

@@ -5,11 +5,21 @@ import { api, getSession, Role } from "../../lib/api";
 import { StatusBadge } from "../../components/StatusBadge";
 type User = { id: string; email: string; fullName: string; phone?: string; role: Role; active: boolean };
 type Analytics = { totalUsers: number; activeUsers: number; revokedUsers: number; citizens: number; workers: number; supervisors: number; admins: number };
+type ActiveTask = { id: string; status: string; priority: string; assignedWorkerName?: string; queuedWorkerName?: string; cancellationReason?: string };
 export default function AdminPage() {
   const [users, setUsers] = useState<User[]>([]); const [analytics, setAnalytics] = useState<Analytics | null>(null); const [message, setMessage] = useState(""); const [isError, setIsError] = useState(false); const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<ActiveTask[]>([]);
   const currentUserId = getSession()?.userId;
-  async function load() { try { const [currentUsers, currentAnalytics] = await Promise.all([api<User[]>("/admin/users"), api<Analytics>("/admin/users/analytics")]); setUsers(currentUsers); setAnalytics(currentAnalytics); } catch { setMessage("Unable to load users and analytics."); setIsError(true); } }
+  async function load() { try { const [currentUsers, currentAnalytics, currentTasks] = await Promise.all([api<User[]>("/admin/users"), api<Analytics>("/admin/users/analytics"), api<ActiveTask[]>("/admin/tasks")]); setUsers(currentUsers); setAnalytics(currentAnalytics); setTasks(currentTasks); } catch { setMessage("Unable to load users and analytics."); setIsError(true); } }
   useEffect(() => { load(); }, []);
+  async function cancelTask(task: ActiveTask) {
+    const reason = window.prompt(`Cancel task ${task.id.slice(0, 8)}… assigned to ${task.assignedWorkerName ?? "a worker"}? Explain why the request is corrupted or misaligned.`, task.cancellationReason ?? "");
+    if (reason === null) return;
+    setBusyUserId(task.id);
+    try { await api(`/admin/tasks/${task.id}`, { method: "DELETE", body: JSON.stringify({ reason: reason.trim() || null }) }); setMessage(`Task cancelled. Its complaints return to the verified queue for re-dispatch.`); setIsError(false); await load(); }
+    catch (e) { setMessage(e instanceof Error ? e.message : "Unable to cancel this task."); setIsError(true); }
+    finally { setBusyUserId(null); }
+  }
   async function changeRole(id: string, role: Role) {
     setBusyUserId(id);
     try { await api(`/admin/users/${id}/role`, { method: "PUT", body: JSON.stringify({ role }) }); setMessage(`Role updated to ${role}.`); setIsError(false); await load(); }
@@ -62,6 +72,22 @@ export default function AdminPage() {
             </div>
           ))}
           {users.length === 0 && <p className="m-4 empty-state">No users found.</p>}
+        </div>
+      </section>
+      <section className="card mt-7 overflow-hidden p-0">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-5"><div><p className="font-semibold">Task governance</p><p className="mt-1 text-sm text-slate-500">Cancel a corrupted or misaligned request. Its complaints return to the verified queue for re-dispatch to another worker.</p></div><span className="badge bg-red-50 text-red-800 ring-red-600/20">{tasks.length} in flight</span></div>
+        <div className="divide-y divide-slate-200">
+          {tasks.map(task => (
+            <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={task.id}>
+              <div>
+                <div className="flex flex-wrap gap-2"><StatusBadge value={task.priority} /><StatusBadge value={task.status} /></div>
+                <p className="mt-2 text-sm text-slate-700">Task <span className="font-mono text-slate-900">{task.id.slice(0, 8)}</span> · {task.assignedWorkerName ?? task.queuedWorkerName ?? "Unassigned"}</p>
+                {task.cancellationReason && <p className="mt-1 text-xs text-red-700">Cancelled: {task.cancellationReason}</p>}
+              </div>
+              <button className="btn-danger shrink-0" disabled={busyUserId === task.id} onClick={() => cancelTask(task)}>{busyUserId === task.id ? "Cancelling…" : "Cancel request"}</button>
+            </div>
+          ))}
+          {tasks.length === 0 && <p className="m-4 empty-state">No tasks are currently in flight.</p>}
         </div>
       </section>
     </main>
