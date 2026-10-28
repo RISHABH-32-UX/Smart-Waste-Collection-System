@@ -19,6 +19,16 @@ const HOME_BY_ROLE: Record<string, string> = {
 };
 
 export function middleware(request: NextRequest) {
+  // Temporary development-only UI preview bypass
+  // Must only run in development mode; never active in production
+  const isDevAuthBypass =
+    process.env.NODE_ENV === "development" &&
+    (process.env.DEV_AUTH_BYPASS === "true" || process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === "true");
+
+  if (isDevAuthBypass) {
+    return NextResponse.next();
+  }
+
   const { pathname } = request.nextUrl;
   const prefix = Object.keys(ROUTE_ROLES).find((p) => pathname === p || pathname.startsWith(`${p}/`));
   const role = request.cookies.get("sw_role")?.value;
