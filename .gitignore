@@ -5,6 +5,7 @@ node_modules/
 target/
 *.log
 .env
+.env*.local
 backend/var/
 # AI coding tool settings
 .claude/
