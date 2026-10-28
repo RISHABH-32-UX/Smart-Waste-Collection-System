@@ -12,6 +12,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1/uploads")
@@ -24,13 +25,13 @@ public class MediaController {
 
   @PostMapping(consumes = "multipart/form-data") @ResponseStatus(HttpStatus.CREATED)
   public UploadResponse upload(@AuthenticationPrincipal Jwt jwt, @RequestParam("file") MultipartFile file) throws IOException {
-    if (file.isEmpty() || file.getSize() > 10 * 1024 * 1024) throw new IllegalArgumentException("Image must be 1-10 MB");
+    if (file.isEmpty() || file.getSize() > 10 * 1024 * 1024) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Image must be 1-10 MB");
     String type = file.getContentType();
     if (type == null || !(type.equals("image/jpeg") || type.equals("image/png") || type.equals("image/webp")))
-      throw new IllegalArgumentException("Only JPEG, PNG, and WEBP images are allowed");
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only JPEG, PNG, and WEBP images are allowed");
     UUID assetId = UUID.randomUUID();
     String safeName = StringUtils.cleanPath(file.getOriginalFilename() == null ? "image" : file.getOriginalFilename());
-    if (safeName.contains("..")) throw new IllegalArgumentException("Invalid filename");
+    if (safeName.contains("..")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid filename");
     Files.createDirectories(uploadDirectory);
     String key = assetId + "-" + safeName.replaceAll("[^a-zA-Z0-9._-]", "_");
     file.transferTo(uploadDirectory.resolve(key));

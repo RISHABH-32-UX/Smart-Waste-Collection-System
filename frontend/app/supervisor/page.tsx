@@ -61,9 +61,43 @@ type CreatedTask = {
 
 type AssignmentMode = "IMMEDIATE" | "QUEUE_2_HOURS" | "QUEUE_3_HOURS";
 
-const priorityOptions = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
-
 export default function SupervisorPage() {
+  const [countdowns, setCountdowns] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdowns(prev => {
+        const newCountdowns: Record<string, string> = {};
+        Object.entries(prev).forEach(([taskId, queuedForAt]) => {
+          const dueTime = new Date(queuedForAt).getTime();
+          const now = Date.now();
+          const diff = dueTime - now;
+          if (diff > 0) {
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            newCountdowns[taskId] = `${hours}h ${minutes}m`;
+          } else {
+            newCountdowns[taskId] = "0h 0m";
+          }
+        });
+        return newCountdowns;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const getCountdown = (queuedForAt?: string) => {
+    if (!queuedForAt) return "";
+    const dueTime = new Date(queuedForAt).getTime();
+    const now = Date.now();
+    const diff = dueTime - now;
+    if (diff <= 0) return "0h 0m";
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
+  };
+
+  const priorityOptions = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
   const [verificationItems, setVerificationItems] = useState<Complaint[]>([]);
   const [readyItems, setReadyItems] = useState<Complaint[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);

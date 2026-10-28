@@ -10,5 +10,13 @@ public class QueuedTaskScheduler {
 
   /** Checks queued work every minute while the backend is running. */
   @Scheduled(fixedDelay = 60_000)
-  public void assignDueQueuedTasks() { tasks.assignDueQueuedTasks(); }
+  public void assignDueQueuedTasks() {
+    tasks.assignDueQueuedTasks();
+  }
+
+  /** Checks queued work every minute and activates tasks that are due. */
+  @Scheduled(fixedDelay = 60_000)
+  public void checkQueuedTasks() {
+    tasks.checkQueuedTasks();
+  }
 }
