@@ -17,5 +17,10 @@ const STATUS_STYLES: Record<string, string> = {
 
 export function StatusBadge({ value }: { value: string }) {
   const style = STATUS_STYLES[value] ?? "bg-slate-100 text-slate-700 ring-slate-500/20";
-  return <span className={`badge ring-1 ring-inset ${style}`}>{value.replaceAll("_", " ")}</span>;
+  return (
+    <span className={`badge ring-1 ring-inset font-semibold ${style}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70 shrink-0" aria-hidden="true" />
+      <span>{value.replaceAll("_", " ")}</span>
+    </span>
+  );
 }

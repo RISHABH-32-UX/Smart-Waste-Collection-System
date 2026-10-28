@@ -1,3 +1,6 @@
+import { isDevAuthBypass, MOCK_DEV_SESSION } from "./devAuthBypass";
+import { handleMockApi, getMockBlob } from "./mockData";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1";
 
 export type Role = "CITIZEN" | "WORKER" | "SUPERVISOR" | "ADMIN";
@@ -14,12 +17,24 @@ export const ROLE_HOME: Record<Role, string> = {
   ADMIN: "/admin",
 };
 
-export function getAccessToken() { return typeof window === "undefined" ? null : sessionStorage.getItem("accessToken"); }
+export function getAccessToken() {
+  if (typeof window === "undefined") return null;
+  const token = sessionStorage.getItem("accessToken");
+  if (!token && isDevAuthBypass()) return MOCK_DEV_SESSION.accessToken;
+  return token;
+}
 
 export function getSession(): Session | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem("smartWasteSession");
-  return raw ? JSON.parse(raw) as Session : null;
+  if (raw) {
+    try {
+      return JSON.parse(raw) as Session;
+    } catch {
+      // Fallback
+    }
+  }
+  return null;
 }
 
 export function setSession(session: Session) {
@@ -37,19 +52,33 @@ export function clearSession() {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // If preview mode is enabled, intercept with mock data so pages render without the backend
+  if (isDevAuthBypass()) {
+    return handleMockApi<T>(path, init);
+  }
+
   const token = getAccessToken() ?? getSession()?.accessToken;
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
-    headers: { ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...init.headers },
+    headers: {
+      ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init.headers,
+    },
   });
   if (!response.ok) throw new Error((await response.text()) || `Request failed (${response.status})`);
-  return response.status === 204 ? (undefined as T) : response.json() as Promise<T>;
+  return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
 }
 
 // Images are protected resources, so a normal <img> URL cannot be used: it
 // cannot attach the JWT authorization header. Fetch the image as a Blob first
 // and render the returned object URL instead.
 export async function authorizedBlob(path: string): Promise<Blob> {
+  // If preview mode is enabled, return a mock SVG blob for visual inspection
+  if (isDevAuthBypass()) {
+    return getMockBlob(path);
+  }
+
   const token = getAccessToken() ?? getSession()?.accessToken;
   const response = await fetch(`${API_URL}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
