@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getSession, ROLE_HOME, Session } from "../lib/api";
 
 const features = [
   { icon: "📍", title: "Report precisely", text: "Snap a photo with auto-captured GPS coordinates — every complaint carries location evidence." },
@@ -16,6 +20,23 @@ const workflow = [
 ];
 
 export default function Home() {
+  const [session, setSession] = useState<Session | null>(null);
+
+  useEffect(() => {
+    const update = () => setSession(getSession());
+    update();
+    window.addEventListener("smart-waste-session", update);
+    return () => window.removeEventListener("smart-waste-session", update);
+  }, []);
+
+  const workspaceHref = session ? ROLE_HOME[session.role] : null;
+  const workspaceLabel = session
+    ? session.role === "SUPERVISOR" ? "Open verification hub"
+      : session.role === "WORKER" ? "Open my tasks"
+        : session.role === "ADMIN" ? "Open admin console"
+          : "Open my reports"
+    : null;
+
   return (
     <main>
       <section className="bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-700 px-6 py-24 text-white">
@@ -23,10 +44,15 @@ export default function Home() {
           <p className="mb-4 text-xs font-bold tracking-[.22em] text-emerald-200">SMART WASTE COLLECTION MANAGEMENT</p>
           <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-tight md:text-6xl">Cleaner neighbourhoods, accountable collection.</h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-emerald-50">Report waste with location evidence. Municipal teams verify, dispatch, track, and close every cleanup transparently — with one portal for every role.</p>
-          <div className="mt-9 flex flex-wrap gap-3">
+          {session && workspaceHref && workspaceLabel ? (
+            <div className="mt-9 rounded-xl border border-emerald-300/40 bg-white/10 p-4 sm:flex sm:items-center sm:justify-between sm:gap-5">
+              <div><p className="text-sm font-bold text-white">You are signed in as {session.role.toLowerCase()}.</p><p className="mt-1 text-sm text-emerald-100">Your workspace is ready — no need to sign in again.</p></div>
+              <Link className="mt-4 inline-block rounded-lg bg-white px-5 py-3 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50 sm:mt-0" href={workspaceHref}>{workspaceLabel}</Link>
+            </div>
+          ) : <div className="mt-9 flex flex-wrap gap-3">
             <Link className="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-50" href="/register">Create an account</Link>
             <Link className="rounded-lg border border-emerald-300/60 px-5 py-3 text-sm font-semibold transition hover:bg-white/10" href="/login">Sign in</Link>
-          </div>
+          </div>}
         </div>
       </section>
 

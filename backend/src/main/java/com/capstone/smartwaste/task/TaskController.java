@@ -28,6 +28,10 @@ public class TaskController {
   @GetMapping("/api/v1/worker/tasks") public List<TaskService.TaskView> workerTasks(@AuthenticationPrincipal Jwt jwt) {
     return tasks.workerTasks(UUID.fromString(jwt.getSubject()));
   }
+  @GetMapping("/api/v1/worker/tasks/{taskId}")
+  public TaskService.TaskDetail workerTaskDetail(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId) {
+    return tasks.workerTaskDetail(taskId, UUID.fromString(jwt.getSubject()));
+  }
   @PostMapping("/api/v1/worker/tasks/{taskId}/location-events")
   public TaskService.LocationResult location(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId, @Valid @RequestBody LocationBody body) {
     return tasks.recordLocation(taskId, UUID.fromString(jwt.getSubject()), new TaskService.LocationEvent(body.latitude(),body.longitude(),body.accuracyMeters(),body.capturedAt()));
@@ -40,6 +44,10 @@ public class TaskController {
   public void review(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId, @RequestBody ReviewBody body) {
     tasks.reviewResolution(taskId, UUID.fromString(jwt.getSubject()), body.accepted());
   }
+  @GetMapping("/api/v1/supervisor/tasks/resolution-review-queue")
+  public List<TaskService.TaskDetail> resolutionReviewQueue() { return tasks.resolutionReviewQueue(); }
+  @GetMapping("/api/v1/supervisor/tasks/{taskId}/resolution-review")
+  public TaskService.TaskDetail resolutionReviewDetail(@PathVariable UUID taskId) { return tasks.resolutionReviewDetail(taskId); }
   public record CreateTaskBody(@NotNull UUID workerId, @NotNull TaskService.AssignmentMode assignmentMode,
                                @NotNull String priority, Instant dueAt, @NotEmpty List<UUID> complaintIds,
                                List<CoordinateBody> boundary) { }

@@ -45,7 +45,7 @@ public class AuthService {
   }
 
   public AuthResponse login(LoginRequest request) {
-    List<UserLogin> matches = jdbc.query("select id,email,password_hash,role from app_users where email=? and active=true",
+    List<UserLogin> matches = jdbc.query("select id,email,password_hash,role from app_users where email=? and active=true and deleted_at is null",
       (rs, row) -> new UserLogin(UUID.fromString(rs.getString("id")), rs.getString("email"), rs.getString("password_hash"), rs.getString("role")),
       request.email().trim().toLowerCase());
     if (matches.isEmpty() || !passwords.matches(request.password(), matches.get(0).hash()))

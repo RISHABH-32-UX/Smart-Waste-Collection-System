@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { RequireRole } from "../../components/RequireRole";
 import { StatusBadge } from "../../components/StatusBadge";
+import { CameraCapture } from "../../components/CameraCapture";
 
 type Complaint = { id: string; status: string; description: string; severity?: string; createdAt: string };
 function locate(): Promise<{ latitude: number; longitude: number }> {
@@ -37,8 +38,9 @@ export default function ReportPage() {
         <h1 className="page-title mb-5 mt-2">Help keep your area clean</h1>
         <form className="space-y-4" onSubmit={submit}>
           <div>
-            <label className="field-label" htmlFor="photo">Site photo</label>
-            <input id="photo" className="field" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={e => setFile(e.target.files?.[0] ?? null)} required />
+            <p className="field-label">Site photo</p>
+            <CameraCapture disabled={busy} onCapture={setFile} />
+            {file && <p className="mt-2 text-sm font-medium text-emerald-800">Photo ready: {file.name}</p>}
           </div>
           <div>
             <label className="field-label" htmlFor="description">Description</label>

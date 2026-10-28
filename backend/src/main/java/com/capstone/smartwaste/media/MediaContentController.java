@@ -40,7 +40,18 @@ public class MediaContentController {
       .stream().findFirst().orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Media not found"));
     List<String> roles = jwt.getClaimAsStringList("roles");
     boolean staff = roles != null && (roles.contains("SUPERVISOR") || roles.contains("ADMIN"));
-    if (!staff && !asset.ownerId().equals(UUID.fromString(jwt.getSubject()))) {
+    UUID requesterId = UUID.fromString(jwt.getSubject());
+    // A worker can view only evidence associated with a task currently assigned to them.
+    // This gives field staff the before-photo context without exposing unrelated citizen media.
+    boolean assignedWorker = roles != null && roles.contains("WORKER") && Boolean.TRUE.equals(jdbc.queryForObject("""
+      select exists(
+        select 1 from tasks t
+        join task_complaints tc on tc.task_id=t.id
+        join complaint_media cm on cm.complaint_id=tc.complaint_id
+        where t.assigned_worker_id=? and cm.asset_id=?
+      )
+      """, Boolean.class, requesterId, assetId));
+    if (!staff && !assignedWorker && !asset.ownerId().equals(requesterId)) {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have access to this media");
     }
 

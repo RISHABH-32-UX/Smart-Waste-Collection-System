@@ -1,11 +1,12 @@
 "use client";
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { api, ROLE_HOME, Role, setSession, getSession } from "../../lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -13,8 +14,14 @@ export default function LoginPage() {
 
   useEffect(() => {
     const session = getSession();
-    if (session) router.replace(ROLE_HOME[session.role]);
-  }, [router]);
+    if (session) router.replace(nextPath() ?? ROLE_HOME[session.role]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, searchParams]);
+
+  function nextPath() {
+    const next = searchParams.get("next");
+    return next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+  }
 
   async function login(e: FormEvent) {
     e.preventDefault();
@@ -22,7 +29,7 @@ export default function LoginPage() {
     try {
       const data = await api<{ accessToken: string; role: Role; userId: string }>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
       setSession(data);
-      router.push(ROLE_HOME[data.role]);
+      router.push(nextPath() ?? ROLE_HOME[data.role]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally { setBusy(false); }

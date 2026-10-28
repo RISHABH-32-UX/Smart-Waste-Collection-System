@@ -21,9 +21,16 @@ const HOME_BY_ROLE: Record<string, string> = {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const prefix = Object.keys(ROUTE_ROLES).find((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const role = request.cookies.get("sw_role")?.value;
+  if (pathname === "/profile") {
+    if (role) return NextResponse.next();
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
   if (!prefix) return NextResponse.next();
 
-  const role = request.cookies.get("sw_role")?.value;
   if (!role) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -39,4 +46,4 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/report/:path*", "/worker/:path*", "/supervisor/:path*", "/admin/:path*"] };
+export const config = { matcher: ["/report/:path*", "/worker/:path*", "/supervisor/:path*", "/admin/:path*", "/profile"] };

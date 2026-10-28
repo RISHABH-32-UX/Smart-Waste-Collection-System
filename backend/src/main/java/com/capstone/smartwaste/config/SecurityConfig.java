@@ -26,6 +26,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -38,9 +39,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @EnableMethodSecurity
 public class SecurityConfig {
   private final SecretKey key;
+  private final ActiveUserFilter activeUserFilter;
 
-  public SecurityConfig(@Value("${app.jwt.secret}") String secret) {
+  public SecurityConfig(@Value("${app.jwt.secret}") String secret, ActiveUserFilter activeUserFilter) {
     this.key = new SecretKeySpec(Base64.getDecoder().decode(secret), "HmacSHA256");
+    this.activeUserFilter = activeUserFilter;
   }
 
   @Bean JwtEncoder jwtEncoder() { return new NimbusJwtEncoder(new ImmutableSecret<SecurityContext>(key)); }
@@ -60,6 +63,7 @@ public class SecurityConfig {
         .requestMatchers("/api/v1/worker/**").hasAnyRole("WORKER", "ADMIN")
         .anyRequest().authenticated())
       .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(jwtAuthenticationConverter())))
+      .addFilterAfter(activeUserFilter, BearerTokenAuthenticationFilter.class)
       .build();
   }
 

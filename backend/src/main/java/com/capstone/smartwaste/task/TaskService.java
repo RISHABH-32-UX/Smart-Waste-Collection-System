@@ -5,7 +5,9 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,12 +28,23 @@ public class TaskService {
     if (request.complaintIds().isEmpty()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one complaint is required");
     if (request.workerId() == null || request.assignmentMode() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Select a worker and assignment mode");
 
-    lockAndValidateWorker(request.workerId());
-    boolean workerFree = isWorkerFree(request.workerId());
-    boolean queued = request.assignmentMode() != AssignmentMode.IMMEDIATE;
-    if (!queued && !workerFree) throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected worker has an active task. Choose a free worker or queue this task.");
-    if (queued && workerFree) throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected worker is free. Assign the task immediately instead of queueing it.");
-    if (queued && hasQueuedTask(request.workerId())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected worker already has a queued task. Choose another busy worker.");
+    // A free worker always receives new work immediately. The selected worker is
+    // used only as a queue reservation when every active worker is already busy.
+    if (!isEligibleWorker(request.workerId()))
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selected user is not an active worker");
+    UUID freeWorkerId = lockPreferredFreeWorker(request.workerId());
+    if (freeWorkerId == null) freeWorkerId = lockFirstFreeWorker();
+    boolean queued = freeWorkerId == null;
+    UUID assignedWorkerId = freeWorkerId;
+    UUID queuedWorkerId = null;
+    if (freeWorkerId == null) {
+      lockAndValidateWorker(request.workerId());
+      if (request.assignmentMode() == AssignmentMode.IMMEDIATE)
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "No free worker is available. Choose a two- or three-hour queue option.");
+      if (hasQueuedTask(request.workerId()))
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Selected worker already has a queued task. Choose another busy worker.");
+      queuedWorkerId = request.workerId();
+    }
 
     UUID geofenceId = UUID.randomUUID();
     createGeofence(geofenceId, request.complaintIds(), request.boundary());
@@ -40,7 +53,7 @@ public class TaskService {
     jdbc.update("""
       insert into tasks(id,geofence_id,assigned_worker_id,queued_worker_id,status,priority,due_at,queued_for_at)
       values (?,?,?,?,?,?,?,?)
-      """, taskId, geofenceId, queued ? null : request.workerId(), queued ? request.workerId() : null,
+      """, taskId, geofenceId, assignedWorkerId, queuedWorkerId,
       queued ? "QUEUED" : "ASSIGNED", request.priority(), request.dueAt(), queuedFor);
 
     String complaintStatus = queued ? "ASSIGNMENT_QUEUED" : "ASSIGNED";
@@ -82,13 +95,28 @@ public class TaskService {
       (rs,row) -> view(rs), workerId);
   }
 
+  /** The worker's assigned site, its complaint context, and before/after evidence. */
+  public TaskDetail workerTaskDetail(UUID taskId, UUID workerId) {
+    return taskDetail(get(taskId, workerId, false));
+  }
+
+  /** Cleanup submissions awaiting the supervisor's final validation. */
+  public List<TaskDetail> resolutionReviewQueue() {
+    return jdbc.query(taskSelect() + " where t.status='RESOLUTION_SUBMITTED' order by t.updated_at asc",
+      (rs, row) -> view(rs)).stream().map(this::taskDetail).toList();
+  }
+
+  public TaskDetail resolutionReviewDetail(UUID taskId) {
+    return taskDetail(get(taskId, null, true));
+  }
+
   public TaskView get(UUID taskId, UUID actorId, boolean privileged) {
     List<TaskView> tasks = jdbc.query(taskSelect() + " where t.id=? and (? or t.assigned_worker_id=?)", (rs,row) -> view(rs), taskId, privileged, actorId);
     if (tasks.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Task not found");
     return tasks.get(0);
   }
 
-  /** Called every minute. A queued task is assigned only after its scheduled time and only if its reserved worker is free. */
+  /** Called every minute. Due queue work goes to any currently free worker, not just its original reservation. */
   @Transactional
   public int assignDueQueuedTasks() {
     List<QueuedTask> dueTasks = jdbc.query("""
@@ -99,15 +127,16 @@ public class TaskService {
       """, (rs, row) -> new QueuedTask(UUID.fromString(rs.getString("id")), nullableUuid(rs, "queued_worker_id")));
     int assigned = 0;
     for (QueuedTask queued : dueTasks) {
-      if (queued.workerId() == null || !lockWorker(queued.workerId()) || !isEligibleWorker(queued.workerId())) {
-        jdbc.update("update tasks set status='AWAITING_ASSIGNMENT',queued_worker_id=null,queued_for_at=null,updated_at=now() where id=?", queued.taskId());
-        jdbc.update("update complaints set status='VERIFIED',updated_at=now() from task_complaints tc where tc.task_id=? and tc.complaint_id=complaints.id", queued.taskId());
-        audit(null, "QUEUE_WORKER_UNAVAILABLE", "TASK", queued.taskId());
-      } else if (isWorkerFree(queued.workerId())) {
-        jdbc.update("update tasks set assigned_worker_id=?,queued_worker_id=null,queued_for_at=null,status='ASSIGNED',updated_at=now() where id=? and status='QUEUED'", queued.workerId(), queued.taskId());
+      UUID freeWorkerId = lockFirstFreeWorker();
+      if (freeWorkerId != null) {
+        jdbc.update("update tasks set assigned_worker_id=?,queued_worker_id=null,queued_for_at=null,status='ASSIGNED',updated_at=now() where id=? and status='QUEUED'", freeWorkerId, queued.taskId());
         jdbc.update("update complaints set status='ASSIGNED',updated_at=now() from task_complaints tc where tc.task_id=? and tc.complaint_id=complaints.id and complaints.status='ASSIGNMENT_QUEUED'", queued.taskId());
         audit(null, "QUEUED_TASK_AUTO_ASSIGNED", "TASK", queued.taskId());
         assigned++;
+      } else if (queued.workerId() == null || !lockWorker(queued.workerId()) || !isEligibleWorker(queued.workerId())) {
+        jdbc.update("update tasks set status='AWAITING_ASSIGNMENT',queued_worker_id=null,queued_for_at=null,updated_at=now() where id=?", queued.taskId());
+        jdbc.update("update complaints set status='VERIFIED',updated_at=now() from task_complaints tc where tc.task_id=? and tc.complaint_id=complaints.id", queued.taskId());
+        audit(null, "QUEUE_WORKER_UNAVAILABLE", "TASK", queued.taskId());
       } else {
         // Delay further rather than assigning two active jobs to one worker.
         jdbc.update("update tasks set queued_for_at=now() + interval '15 minutes',updated_at=now() where id=?", queued.taskId());
@@ -139,7 +168,13 @@ public class TaskService {
 
   @Transactional
   public void submitResolution(UUID taskId, UUID workerId, List<UUID> afterAssets, String note) {
-    int updated = jdbc.update("update tasks set status='RESOLUTION_SUBMITTED',updated_at=now() where id=? and assigned_worker_id=? and status='ON_SITE'", taskId, workerId);
+    String cleanedNote = note == null || note.isBlank() ? null : note.trim();
+    if (cleanedNote != null && cleanedNote.length() > 2000)
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Resolution note must be 2,000 characters or fewer");
+    int updated = jdbc.update("""
+      update tasks set status='RESOLUTION_SUBMITTED',resolution_note=?,updated_at=now()
+      where id=? and assigned_worker_id=? and status in ('ON_SITE','REWORK_REQUIRED')
+      """, cleanedNote, taskId, workerId);
     if (updated != 1) throw new ResponseStatusException(HttpStatus.CONFLICT, "Task must be on site before submitting resolution");
     for (UUID assetId : afterAssets) {
       int owned = jdbc.queryForObject("select count(*) from media_assets where id=? and owner_id=?", Integer.class, assetId, workerId);
@@ -160,12 +195,41 @@ public class TaskService {
 
   private String taskSelect() {
     return """
-      select t.id,t.status,t.priority,t.due_at,t.queued_for_at,ST_AsGeoJSON(g.boundary::geometry) boundary,
+      select t.id,t.status,t.priority,t.due_at,t.queued_for_at,t.resolution_note,ST_AsGeoJSON(g.boundary::geometry) boundary,
              t.assigned_worker_id,t.queued_worker_id,aw.full_name assigned_worker_name,qw.full_name queued_worker_name
       from tasks t join geofences g on g.id=t.geofence_id
       left join app_users aw on aw.id=t.assigned_worker_id
       left join app_users qw on qw.id=t.queued_worker_id
       """;
+  }
+
+  private TaskDetail taskDetail(TaskView task) {
+    Map<UUID, List<TaskMedia>> mediaByComplaint = new HashMap<>();
+    jdbc.query("""
+      select tc.complaint_id,m.id,m.original_name,m.content_type,m.size_bytes,cm.kind
+      from task_complaints tc
+      join complaint_media cm on cm.complaint_id=tc.complaint_id
+      join media_assets m on m.id=cm.asset_id
+      where tc.task_id=?
+      order by tc.complaint_id,case cm.kind when 'BEFORE' then 1 else 2 end,m.created_at
+      """, rs -> {
+        UUID complaintId = UUID.fromString(rs.getString("complaint_id"));
+        mediaByComplaint.computeIfAbsent(complaintId, unused -> new ArrayList<>()).add(new TaskMedia(
+          UUID.fromString(rs.getString("id")), rs.getString("original_name"), rs.getString("content_type"),
+          rs.getLong("size_bytes"), rs.getString("kind")));
+      }, task.id());
+    List<TaskComplaint> complaints = jdbc.query("""
+      select c.id,c.status,c.description,ST_Y(c.location::geometry) latitude,ST_X(c.location::geometry) longitude,
+             c.ai_severity,c.created_at
+      from task_complaints tc join complaints c on c.id=tc.complaint_id
+      where tc.task_id=? order by c.created_at
+      """, (rs, row) -> {
+        UUID complaintId = UUID.fromString(rs.getString("id"));
+        return new TaskComplaint(complaintId, rs.getString("status"), rs.getString("description"),
+          rs.getDouble("latitude"), rs.getDouble("longitude"), rs.getString("ai_severity"),
+          rs.getTimestamp("created_at").toInstant(), List.copyOf(mediaByComplaint.getOrDefault(complaintId, List.of())));
+      }, task.id());
+    return new TaskDetail(task, complaints);
   }
 
   private void createGeofence(UUID geofenceId, List<UUID> complaintIds, List<Coordinate> boundary) {
@@ -181,6 +245,29 @@ public class TaskService {
     if (!lockWorker(workerId) || !isEligibleWorker(workerId)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selected user is not an active worker");
   }
   private boolean lockWorker(UUID workerId) { return !jdbc.query("select id from app_users where id=? for update", (rs, row) -> rs.getString("id"), workerId).isEmpty(); }
+  private UUID lockFirstFreeWorker() {
+    List<UUID> workers = jdbc.query("""
+      select u.id from app_users u
+      where u.role='WORKER' and u.active=true
+      and not exists (
+        select 1 from tasks t where t.assigned_worker_id=u.id and t.status in ('ASSIGNED','ACCEPTED','ON_SITE','RESOLUTION_SUBMITTED','REWORK_REQUIRED')
+      )
+      order by u.full_name,u.id
+      limit 1 for update skip locked
+      """, (rs, row) -> UUID.fromString(rs.getString("id")));
+    return workers.isEmpty() ? null : workers.get(0);
+  }
+  private UUID lockPreferredFreeWorker(UUID workerId) {
+    List<UUID> workers = jdbc.query("""
+      select u.id from app_users u
+      where u.id=? and u.role='WORKER' and u.active=true
+      and not exists (
+        select 1 from tasks t where t.assigned_worker_id=u.id and t.status in ('ASSIGNED','ACCEPTED','ON_SITE','RESOLUTION_SUBMITTED','REWORK_REQUIRED')
+      )
+      for update skip locked
+      """, (rs, row) -> UUID.fromString(rs.getString("id")), workerId);
+    return workers.isEmpty() ? null : workers.get(0);
+  }
   private boolean isEligibleWorker(UUID workerId) {
     Integer count = jdbc.queryForObject("select count(*) from app_users where id=? and role='WORKER' and active=true", Integer.class, workerId);
     return count != null && count == 1;
@@ -204,7 +291,7 @@ public class TaskService {
   private TaskView view(ResultSet rs) throws SQLException {
     return new TaskView(UUID.fromString(rs.getString("id")), rs.getString("status"), rs.getString("priority"),
       rs.getTimestamp("due_at") == null ? null : rs.getTimestamp("due_at").toInstant(),
-      rs.getTimestamp("queued_for_at") == null ? null : rs.getTimestamp("queued_for_at").toInstant(), rs.getString("boundary"),
+      rs.getTimestamp("queued_for_at") == null ? null : rs.getTimestamp("queued_for_at").toInstant(), rs.getString("resolution_note"), rs.getString("boundary"),
       nullableUuid(rs, "assigned_worker_id"), nullableUuid(rs, "queued_worker_id"), rs.getString("assigned_worker_name"), rs.getString("queued_worker_name"));
   }
   private static UUID nullableUuid(ResultSet rs, String column) throws SQLException {
@@ -231,6 +318,12 @@ public class TaskService {
   public record WorkerAvailability(UUID id, String fullName, String email, String availability, int activeTaskCount, int queuedTaskCount) { }
   public record LocationEvent(double latitude, double longitude, double accuracyMeters, Instant capturedAt) { }
   public record LocationResult(boolean insideGeofence, boolean entryConfirmed, String taskStatus) { }
-  public record TaskView(UUID id, String status, String priority, Instant dueAt, Instant queuedForAt, String boundaryGeoJson, UUID assignedWorkerId, UUID queuedWorkerId, String assignedWorkerName, String queuedWorkerName) { }
+  public record TaskView(UUID id, String status, String priority, Instant dueAt, Instant queuedForAt, String resolutionNote,
+                         String boundaryGeoJson, UUID assignedWorkerId, UUID queuedWorkerId, String assignedWorkerName,
+                         String queuedWorkerName) { }
+  public record TaskMedia(UUID id, String filename, String contentType, long sizeBytes, String kind) { }
+  public record TaskComplaint(UUID id, String status, String description, double latitude, double longitude,
+                              String severity, Instant createdAt, List<TaskMedia> media) { }
+  public record TaskDetail(TaskView task, List<TaskComplaint> complaints) { }
   private record QueuedTask(UUID taskId, UUID workerId) { }
 }
