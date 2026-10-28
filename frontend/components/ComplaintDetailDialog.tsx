@@ -3,6 +3,20 @@
 import { useEffect, useState } from "react";
 import { api, authorizedBlob } from "../lib/api";
 import { StatusBadge } from "./StatusBadge";
+import {
+  X,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  Calendar,
+  Clock,
+  FileText,
+  AlertCircle,
+  Image as ImageIcon,
+  Loader2,
+  ShieldCheck,
+} from "lucide-react";
 
 type ComplaintDetail = {
   complaint: {
@@ -59,7 +73,7 @@ export function ComplaintDetailDialog({ complaintId, onClose }: Props) {
               const url = URL.createObjectURL(blob);
               allocatedUrls.push(url);
               return [item.id, url] as const;
-            }),
+            })
         );
         if (!active) return;
         setDetail(report);
@@ -80,54 +94,153 @@ export function ComplaintDetailDialog({ complaintId, onClose }: Props) {
 
   if (!complaintId) return null;
 
-  return <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="complaint-detail-title">
-    <div className="mx-auto my-8 w-full max-w-3xl rounded-2xl bg-white p-5 shadow-2xl sm:p-7">
-      <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
-        <div>
-          <p className="eyebrow">Citizen report</p>
-          <h2 id="complaint-detail-title" className="mt-1 text-xl font-bold text-slate-950">Complaint details</h2>
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 backdrop-blur-sm p-4 sm:p-6 flex items-center justify-center animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="complaint-detail-title"
+    >
+      <div className="relative w-full max-w-3xl rounded-3xl bg-white shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-200/90 px-6 py-4 bg-slate-50/80">
+          <div>
+            <p className="eyebrow">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-700" />
+              <span>Supervisor Inspection</span>
+            </p>
+            <h2 id="complaint-detail-title" className="text-lg font-bold text-slate-900 mt-0.5">
+              Citizen Complaint #{complaintId.slice(0, 8)}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="rounded-xl p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition"
+            onClick={onClose}
+            aria-label="Close complaint details"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <button className="btn-secondary shrink-0" onClick={onClose} aria-label="Close complaint details">Close</button>
+
+        {/* Content body */}
+        <div className="overflow-y-auto p-6 space-y-6">
+          {loading && (
+            <div className="py-14 text-center">
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
+              <p className="mt-3 text-sm font-medium text-slate-600">Loading citizen report & evidence…</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+              <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {detail && (
+            <div className="space-y-6">
+              {/* Badges & Geolocation Header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 border border-slate-200/80 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge value={detail.complaint.status} />
+                  {detail.complaint.severity && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-medium text-slate-500">AI Priority:</span>
+                      <StatusBadge value={detail.complaint.severity} />
+                    </div>
+                  )}
+                </div>
+                <div className="font-mono text-xs text-slate-600 flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4 text-emerald-700" />
+                  <span>{detail.complaint.latitude.toFixed(6)}, {detail.complaint.longitude.toFixed(6)}</span>
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Reported Description & Landmark</span>
+                </h3>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-800">
+                  {detail.complaint.description}
+                </div>
+              </div>
+
+              {/* Reporter Info */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Citizen Contact Details</span>
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 text-xs">
+                  <div>
+                    <span className="text-slate-400 font-medium">Full Name</span>
+                    <p className="font-semibold text-slate-900 mt-0.5">{detail.reporter.fullName}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-medium">Email</span>
+                    <p className="font-semibold text-slate-900 mt-0.5 truncate">{detail.reporter.email}</p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 font-medium">Phone</span>
+                    <p className="font-semibold text-slate-900 mt-0.5">{detail.reporter.phone || "Not provided"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Media Evidence Gallery */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <ImageIcon className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Photographic Evidence ({detail.media.length})</span>
+                </h3>
+
+                {detail.media.length > 0 ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {detail.media.map(media => {
+                      const url = imageUrls[media.id];
+                      return (
+                        <figure
+                          key={media.id}
+                          className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs"
+                        >
+                          {url ? (
+                            <img
+                              src={url}
+                              alt={media.filename}
+                              className="h-52 w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-52 w-full items-center justify-center bg-slate-100 text-xs text-slate-400">
+                              <Loader2 className="h-5 w-5 animate-spin" />
+                            </div>
+                          )}
+                          <figcaption className="flex items-center justify-between p-3 border-t border-slate-100 text-xs">
+                            <span className="truncate font-semibold text-slate-800">{media.filename}</span>
+                            <span className="text-slate-400">{formatSize(media.sizeBytes)}</span>
+                          </figcaption>
+                        </figure>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">No photos attached to this report.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-slate-200 px-6 py-4 bg-slate-50 flex justify-end">
+          <button type="button" className="btn-secondary text-xs sm:text-sm" onClick={onClose}>
+            Close Inspection Dialog
+          </button>
+        </div>
       </div>
-
-      {loading && <p className="py-10 text-center text-sm text-slate-500">Loading the citizen report…</p>}
-      {error && <p className="alert-error mt-5">{error}</p>}
-      {detail && <div className="space-y-6 pt-6">
-        <div className="flex flex-wrap gap-2">
-          <StatusBadge value={detail.complaint.status} />
-          {detail.complaint.severity && <StatusBadge value={detail.complaint.severity} />}
-        </div>
-
-        <section className="rounded-xl bg-slate-50 p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Complaint description</p>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">{detail.complaint.description || "No description was provided."}</p>
-          <p className="mt-3 text-xs text-slate-500">Submitted {new Date(detail.complaint.createdAt).toLocaleString()}</p>
-        </section>
-
-        <section className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Reported by</p>
-            <p className="mt-2 font-semibold text-slate-900">{detail.reporter.fullName}</p>
-            <p className="mt-1 text-sm text-slate-600">{detail.reporter.email}</p>
-            {detail.reporter.phone && <p className="mt-1 text-sm text-slate-600">{detail.reporter.phone}</p>}
-          </div>
-          <div className="rounded-xl border border-slate-200 p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Reported location</p>
-            <p className="mt-2 font-mono text-sm text-slate-800">{detail.complaint.latitude.toFixed(6)}, {detail.complaint.longitude.toFixed(6)}</p>
-            <a className="mt-3 inline-block text-sm font-semibold text-emerald-700 underline underline-offset-2" href={`https://www.openstreetmap.org/?mlat=${detail.complaint.latitude}&mlon=${detail.complaint.longitude}#map=18/${detail.complaint.latitude}/${detail.complaint.longitude}`} target="_blank" rel="noreferrer">Open location on map</a>
-          </div>
-        </section>
-
-        <section>
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Citizen evidence</p>
-          {detail.media.length === 0 ? <p className="mt-2 text-sm text-slate-500">No evidence file was attached to this report.</p> : <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            {detail.media.map(item => <div className="overflow-hidden rounded-xl border border-slate-200" key={item.id}>
-              {imageUrls[item.id] ? <img src={imageUrls[item.id]} alt={`Citizen evidence: ${item.filename}`} className="h-52 w-full bg-slate-100 object-cover" /> : <div className="flex h-52 items-center justify-center bg-slate-100 p-4 text-center text-sm text-slate-500">{item.contentType.startsWith("image/") ? "Loading image…" : "This attachment is not an image."}</div>}
-              <div className="p-3"><p className="truncate text-sm font-medium text-slate-800" title={item.filename}>{item.filename}</p><p className="mt-1 text-xs text-slate-500">{item.kind} · {formatSize(item.sizeBytes)}</p></div>
-            </div>)}
-          </div>}
-        </section>
-      </div>}
     </div>
-  </div>;
+  );
 }
