@@ -18,7 +18,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-type Task = { id: string; status: string; priority: string; dueAt?: string };
+type Task = { id: string; status: string; priority: string; dueAt?: string; queuedForAt?: string };
 
 export default function WorkerPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
