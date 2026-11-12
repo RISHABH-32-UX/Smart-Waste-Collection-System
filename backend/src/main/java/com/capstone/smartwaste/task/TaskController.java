@@ -40,6 +40,10 @@ public class TaskController {
   public TaskService.LocationResult location(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId, @Valid @RequestBody LocationBody body) {
     return tasks.recordLocation(taskId, UUID.fromString(jwt.getSubject()), body.toLocationEvent());
   }
+  @PostMapping("/worker/tasks/{taskId}/arrive")
+  public TaskService.TaskView arrive(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId) {
+    return tasks.arriveAtSite(taskId, UUID.fromString(jwt.getSubject()));
+  }
   @PostMapping("/worker/tasks/{taskId}/resolution") @ResponseStatus(HttpStatus.NO_CONTENT)
   public void resolution(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID taskId, @Valid @RequestBody ResolutionBody body) {
     tasks.submitResolution(taskId, UUID.fromString(jwt.getSubject()), body.afterAssetIds(), body.note());

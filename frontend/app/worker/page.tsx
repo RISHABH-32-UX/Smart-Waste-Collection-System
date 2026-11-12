@@ -25,7 +25,33 @@ export default function WorkerPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
-  const [gpsLoadingTaskId, setGpsLoadingTaskId] = useState<string | null>(null);
+  const [countdowns, setCountdowns] = useState<Record<string, string>>({});
+  const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const updateCountdowns = () => {
+      const newCountdowns: Record<string, string> = {};
+      tasks.forEach(task => {
+        if (task.queuedForAt && task.status === "QUEUED") {
+          const diff = new Date(task.queuedForAt).getTime() - Date.now();
+          if (diff <= 0) {
+            newCountdowns[task.id] = "Activating now...";
+            refresh();
+          } else {
+            const h = Math.floor(diff / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+            newCountdowns[task.id] = `${h > 0 ? `${h}h ` : ""}${m}m ${s}s`;
+          }
+        }
+      });
+      setCountdowns(newCountdowns);
+    };
+
+    updateCountdowns();
+    const interval = setInterval(updateCountdowns, 1000);
+    return () => clearInterval(interval);
+  }, [tasks]);
 
   async function refresh() {
     try {
@@ -41,73 +67,48 @@ export default function WorkerPage() {
     refresh();
   }, []);
 
-  async function sendLocation(taskId: string) {
-    if (!navigator.geolocation) {
-      setMessage("This browser does not support location services.");
+  async function proceedToTask(taskId: string) {
+    setBusyTaskId(taskId);
+    setMessage("");
+    try {
+      await api(`/worker/tasks/${taskId}/arrive`, { method: "POST" });
+      setMessage("Arrived on-site! You can now view the task and upload your cleanup proof.");
+      setIsError(false);
+      await refresh();
+      setSelectedTaskId(taskId);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "Failed to proceed to task.");
       setIsError(true);
-      return;
+    } finally {
+      setBusyTaskId(null);
     }
-    setGpsLoadingTaskId(taskId);
-    navigator.geolocation.getCurrentPosition(
-      async position => {
-        try {
-          const result = await api<{ insideGeofence: boolean; entryConfirmed: boolean; taskStatus: string }>(
-            `/worker/tasks/${taskId}/location-events`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude,
-                accuracyMeters: position.coords.accuracy,
-                capturedAt: new Date(position.timestamp).toISOString(),
-              }),
-            }
-          );
-          setMessage(
-            result.entryConfirmed
-              ? "On-site check-in confirmed! You have physically arrived at the collection zone. You can now submit cleanup evidence."
-              : result.insideGeofence
-              ? "Inside the geofence perimeter. Submit another GPS reading to confirm entry."
-              : "You are currently outside the assigned 50m collection geofence."
-          );
-          setIsError(!result.entryConfirmed);
-          await refresh();
-        } catch (cause) {
-          setMessage(cause instanceof Error ? cause.message : "Location check-in failed.");
-          setIsError(true);
-        } finally {
-          setGpsLoadingTaskId(null);
-        }
-      },
-      () => {
-        setMessage("Location permission is required to verify physical on-site presence.");
-        setIsError(true);
-        setGpsLoadingTaskId(null);
-      },
-      { enableHighAccuracy: true, timeout: 15000 }
-    );
   }
 
-  return (
-    <RequireRole role="WORKER">
-      <main className="app-shell max-w-6xl space-y-8">
-        {/* Page Header */}
-        <div className="page-header">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="eyebrow">
-                <HardHat className="h-3.5 w-3.5 text-blue-600" />
-                <span>Field Operations Console</span>
-              </p>
-              <h1 className="page-title">Assigned Collection Tasks</h1>
-              <p className="page-subtitle">
-                Review assigned waste tickets, navigate to reported coordinates, verify on-site presence via GPS geofencing, and upload post-cleanup photographic proof.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 rounded-xl bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-900 border border-blue-200/80 shadow-xs">
-              <ShieldCheck className="h-4 w-4 text-blue-700" />
-              <span>{tasks.length} {tasks.length === 1 ? "Active Task" : "Active Tasks"}</span>
-            </div>
+  return <RequireRole role="WORKER">
+    <main className="app-shell max-w-6xl">
+      <div className="page-header">
+        <p className="eyebrow">Field operations</p>
+        <h1 className="page-title">Assigned collection tasks</h1>
+        <p className="page-subtitle">Open a task to view the citizen report, its photos, and the assigned map location. Click 'Proceed to Task' once you reach the site to submit proof of cleanup.</p>
+      </div>
+      {message && <p className={`mb-4 ${isError ? "alert-error" : "alert-success"}`}>{message}</p>}
+
+      {selectedTaskId ? <WorkerTaskWorkspace taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onResolutionSubmitted={refresh} /> : <div className="grid gap-4 md:grid-cols-2">
+        {tasks.map(task => <article className="card" key={task.id}>
+          <div className="flex flex-wrap items-center justify-between gap-2"><StatusBadge value={task.priority} /><StatusBadge value={task.status} /></div>
+          {task.status === "QUEUED" && <p className="mt-2 text-sm font-bold text-emerald-800">Available in: {countdowns[task.id] || "..."}</p>}
+          <p className="mt-3 text-sm text-slate-700">Due: {task.dueAt ? new Date(task.dueAt).toLocaleString() : "Not set"}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className="btn-primary" disabled={task.status === "QUEUED"} onClick={() => setSelectedTaskId(task.id)}>View task & map</button>
+            {(["ASSIGNED", "ACCEPTED"] as string[]).includes(task.status) && (
+              <button
+                className="btn-secondary"
+                disabled={busyTaskId === task.id}
+                onClick={() => proceedToTask(task.id)}
+              >
+                {busyTaskId === task.id ? "Updating..." : "✅ Reached Destination / Proceed to Task"}
+              </button>
+            )}
           </div>
         </div>
 

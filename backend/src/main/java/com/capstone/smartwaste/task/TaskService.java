@@ -2,6 +2,7 @@ package com.capstone.smartwaste.task;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -73,11 +74,13 @@ public class TaskService {
     Instant queuedFor = queued
         ? Instant.now().plus(Duration.ofHours(request.assignmentMode().delayHours()))
         : null;
+    Timestamp dueAtTs = request.dueAt() == null ? null : Timestamp.from(request.dueAt());
+    Timestamp queuedForTs = queuedFor == null ? null : Timestamp.from(queuedFor);
     jdbc.update("""
       insert into tasks(id,geofence_id,assigned_worker_id,queued_worker_id,status,priority,due_at,queued_for_at)
       values (?,?,?,?,?,?,?,?)
       """, taskId, geofenceId, assignedWorkerId, queuedWorkerId,
-      queued ? "QUEUED" : "ASSIGNED", request.priority(), request.dueAt(), queuedFor);
+      queued ? "QUEUED" : "ASSIGNED", request.priority(), dueAtTs, queuedForTs);
 
     String complaintStatus = queued ? "ASSIGNMENT_QUEUED" : "ASSIGNED";
     for (UUID complaintId : request.complaintIds()) {
@@ -128,9 +131,9 @@ public class TaskService {
 
   public List<TaskView> workerTasks(UUID workerId) {
     return jdbc.query(
-      taskSelect() + " where t.assigned_worker_id=? and t.status not in ('COMPLETED','CANCELLED') "
+      taskSelect() + " where (t.assigned_worker_id=? or t.queued_worker_id=?) and t.status not in ('COMPLETED','CANCELLED') "
         + "order by case t.priority when 'CRITICAL' then 1 when 'HIGH' then 2 when 'MEDIUM' then 3 else 4 end, t.due_at nulls last",
-      (rs, row) -> view(rs), workerId);
+      (rs, row) -> view(rs), workerId, workerId);
   }
 
   /** The worker's assigned site, its complaint context, and before/after evidence. */
@@ -151,8 +154,8 @@ public class TaskService {
 
   public TaskView get(UUID taskId, UUID actorId, boolean privileged) {
     List<TaskView> tasks = jdbc.query(
-      taskSelect() + " where t.id=? and (? or t.assigned_worker_id=?)",
-      (rs, row) -> view(rs), taskId, privileged, actorId);
+      taskSelect() + " where t.id=? and (? or t.assigned_worker_id=? or t.queued_worker_id=?)",
+      (rs, row) -> view(rs), taskId, privileged, actorId, actorId);
     if (tasks.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Task not found");
     return tasks.get(0);
   }
@@ -248,13 +251,14 @@ public class TaskService {
       from tasks t join geofences g on g.id=t.geofence_id where t.id=? and g.active=true
       """, Boolean.class, longitude, latitude, taskId);
 
+    Timestamp recordedAtTs = Timestamp.from(capturedAt != null ? capturedAt : Instant.now());
     jdbc.update(
       "insert into worker_locations(task_id,worker_id,point,accuracy_meters,recorded_at) values(?,?,ST_SetSRID(ST_MakePoint(?,?),4326)::geography,?,?)",
       taskId, workerId, longitude, latitude, accuracyValue,
-      capturedAt != null ? capturedAt : Instant.now());
+      recordedAtTs);
 
     boolean trustworthy = accuracyValue <= 50;
-    boolean entryConfirmed = trustworthy && Boolean.TRUE.equals(inside) && dwellEvidence(taskId, workerId);
+    boolean entryConfirmed = trustworthy && Boolean.TRUE.equals(inside);
     if (entryConfirmed) {
       jdbc.update(
         "update tasks set status='ON_SITE',updated_at=now() where id=? and status in ('ASSIGNED','ACCEPTED')",
@@ -265,6 +269,24 @@ public class TaskService {
       audit(workerId, "GEOFENCE_ENTERED", "TASK", taskId);
     }
     return new LocationResult(Boolean.TRUE.equals(inside), entryConfirmed, get(taskId, workerId, false).status());
+  }
+
+  @Transactional
+  public TaskView arriveAtSite(UUID taskId, UUID workerId) {
+    Integer taskCount = jdbc.queryForObject(
+      "select count(*) from tasks where id=? and assigned_worker_id=? and status in ('ASSIGNED','ACCEPTED','ON_SITE')",
+      Integer.class, taskId, workerId);
+    if (taskCount == null || taskCount != 1)
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Task is not active for this worker");
+
+    jdbc.update(
+      "update tasks set status='ON_SITE',updated_at=now() where id=? and status in ('ASSIGNED','ACCEPTED')",
+      taskId);
+    jdbc.update(
+      "update complaints set status='IN_PROGRESS',updated_at=now() from task_complaints tc where tc.task_id=? and tc.complaint_id=complaints.id and complaints.status='ASSIGNED'",
+      taskId);
+    audit(workerId, "ARRIVED_ON_SITE", "TASK", taskId);
+    return get(taskId, workerId, false);
   }
 
   // ── Resolution workflow ────────────────────────────────────────────
