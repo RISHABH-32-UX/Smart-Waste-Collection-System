@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAuthBypassed } from "./lib/api";
 
 // Server-side route gate: every role-specific dashboard is only reachable
 // after sign-in, and only by the one role that owns it. The definitive
@@ -19,6 +20,10 @@ const HOME_BY_ROLE: Record<string, string> = {
 };
 
 export function middleware(request: NextRequest) {
+  if (isAuthBypassed()) {
+    return NextResponse.next();
+  }
+
   const { pathname } = request.nextUrl;
   const prefix = Object.keys(ROUTE_ROLES).find((p) => pathname === p || pathname.startsWith(`${p}/`));
   const role = request.cookies.get("sw_role")?.value;

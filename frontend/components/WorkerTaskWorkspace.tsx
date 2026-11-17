@@ -5,6 +5,7 @@ import { api } from "../lib/api";
 import { AssignedTaskMap } from "./AssignedTaskMap";
 import { PrivateImage } from "./PrivateImage";
 import { StatusBadge } from "./StatusBadge";
+import { Check } from "lucide-react";
 
 type TaskMedia = { id: string; filename: string; contentType: string; sizeBytes: number; kind: "BEFORE" | "AFTER" };
 type TaskComplaint = { id: string; status: string; description: string; latitude: number; longitude: number; severity?: string; createdAt: string; media: TaskMedia[] };
@@ -94,70 +95,202 @@ export function WorkerTaskWorkspace({ taskId, onClose, onResolutionSubmitted }: 
   const beforePhotos = (complaint: TaskComplaint) => complaint.media.filter(media => media.kind === "BEFORE");
   const afterPhotos = (complaint: TaskComplaint) => complaint.media.filter(media => media.kind === "AFTER");
 
-  return <section className="card space-y-6">
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-5">
-      <div><p className="eyebrow">Task workspace</p><h2 className="mt-1 text-xl font-bold text-slate-950">Assigned collection site</h2><p className="mt-1 text-sm text-slate-600">Review the report, navigate to the site, then submit proof of cleanup.</p></div>
-      <button className="btn-secondary" onClick={onClose}>Back to tasks</button>
-    </div>
-    <div className="flex flex-wrap items-center gap-2">
-      <StatusBadge value={detail.task.priority} />
-      <StatusBadge value={detail.task.status} />
-      {isAssigned && (
-        <button
-          className="btn-primary ml-auto text-sm"
-          disabled={busy}
-          onClick={markArrived}
-        >
-          {busy ? "Updating..." : "✅ Reached Destination / Start Work"}
+  return (
+    <section className="card space-y-6 p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-5">
+        <div>
+          <span className="eyebrow">Task Execution</span>
+          <h2 className="mt-1 text-xl font-extrabold text-slate-950">Assigned Collection Site</h2>
+          <p className="mt-1 text-xs text-slate-500">Review citizen reports, navigate to the geofence perimeter, and submit photographic proof of cleanup.</p>
+        </div>
+        <button className="btn-secondary btn-sm" onClick={onClose}>
+          ← Back to Task List
         </button>
-      )}
-    </div>
-    <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-700">Due: <strong>{detail.task.dueAt ? new Date(detail.task.dueAt).toLocaleString() : "Not set"}</strong></div>
+      </div>
 
-    <section>
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Assigned location</p>
-      <p className="mt-2 text-sm text-slate-600">The marker identifies the reported collection point. The map area covers the task geofence.</p>
-      <AssignedTaskMap className="mt-3" boundaryGeoJson={detail.task.boundaryGeoJson} latitude={primaryLocation?.latitude} longitude={primaryLocation?.longitude} />
-    </section>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/90 bg-slate-50/70 p-3.5">
+        <div className="flex items-center gap-2">
+          <StatusBadge value={detail.task.priority} />
+          <StatusBadge value={detail.task.status} />
+          <span className="text-xs text-slate-500">
+            Due: <strong className="text-slate-800">{detail.task.dueAt ? new Date(detail.task.dueAt).toLocaleString() : "Immediate"}</strong>
+          </span>
+        </div>
 
-    <section className="space-y-4">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Citizen complaint{detail.complaints.length === 1 ? "" : "s"}</p>
-      {detail.complaints.map(complaint => <article className="rounded-xl border border-slate-200 p-4" key={complaint.id}>
-        <div className="flex flex-wrap items-center gap-2"><StatusBadge value={complaint.status} />{complaint.severity && <StatusBadge value={complaint.severity} />}</div>
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-800">{complaint.description}</p>
-        <p className="mt-2 font-mono text-xs text-slate-500">{complaint.latitude.toFixed(6)}, {complaint.longitude.toFixed(6)}</p>
-        <p className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-500">Before-cleanup evidence</p>
-        {beforePhotos(complaint).length ? <div className="mt-2 grid gap-3 sm:grid-cols-2">{beforePhotos(complaint).map(media => <figure className="overflow-hidden rounded-lg border border-slate-200" key={media.id}><PrivateImage assetId={media.id} alt={`Before cleanup: ${media.filename}`} className="h-44 w-full object-cover" /><figcaption className="truncate p-2 text-xs text-slate-600">{media.filename}</figcaption></figure>)}</div> : <p className="mt-2 text-sm text-slate-500">No before-cleanup photo was attached.</p>}
-        {afterPhotos(complaint).length > 0 && <><p className="mt-4 text-xs font-bold uppercase tracking-wide text-slate-500">Submitted cleanup evidence</p><div className="mt-2 grid gap-3 sm:grid-cols-2">{afterPhotos(complaint).map(media => <figure className="overflow-hidden rounded-lg border border-slate-200" key={media.id}><PrivateImage assetId={media.id} alt={`After cleanup: ${media.filename}`} className="h-44 w-full object-cover" /><figcaption className="truncate p-2 text-xs text-slate-600">{media.filename}</figcaption></figure>)}</div></>}
-      </article>)}
-    </section>
+        {isAssigned && (
+          <button
+            className="btn-primary btn-sm inline-flex items-center gap-1.5"
+            disabled={busy}
+            onClick={markArrived}
+          >
+            {busy ? (
+              "Updating…"
+            ) : (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>Confirm Arrived at Site</span>
+              </>
+            )}
+          </button>
+        )}
+      </div>
 
-    {message && <p className={isError ? "alert-error" : "alert-success"}>{message}</p>}
-    {isAssigned && (
-      <section className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <p className="text-sm font-bold text-blue-950">Reached the cleanup site?</p>
-        <p className="mt-1 text-sm leading-6 text-blue-900">
-          Once you have reached your destination, click below to proceed to the task and unlock after-cleanup photo submission.
-        </p>
-        <button
-          className="btn-primary mt-3"
-          disabled={busy}
-          onClick={markArrived}
-        >
-          {busy ? "Updating..." : "✅ Reached Destination / Proceed to Task"}
-        </button>
+      {/* Map Section */}
+      <section className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Assigned Geofenced Location</h3>
+            <p className="text-xs text-slate-500">The marker identifies reported hotspot. Ensure physical presence inside the 50m radius.</p>
+          </div>
+          <span className="badge bg-emerald-50 text-brand-700 ring-brand-600/20 font-mono text-[10px]">
+            GPS ACTIVE
+          </span>
+        </div>
+        <AssignedTaskMap
+          className="mt-2"
+          boundaryGeoJson={detail.task.boundaryGeoJson}
+          latitude={primaryLocation?.latitude}
+          longitude={primaryLocation?.longitude}
+        />
       </section>
-    )}
-    {canSubmit && <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-      <p className="text-sm font-bold text-emerald-950">Submit cleanup for supervisor verification</p>
-      <p className="mt-1 text-sm leading-6 text-emerald-900">Upload at least one real-time after-cleanup image. The complaint is closed only when the supervisor accepts the evidence.</p>
-      <label className="field-label mt-4" htmlFor="after-photos">After-cleanup photos</label>
-      <input id="after-photos" className="field bg-white" type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={chooseFiles} />
-      {files.length > 0 && <p className="mt-2 text-sm text-emerald-900">{files.map(file => file.name).join(", ")}</p>}
-      <label className="field-label mt-4" htmlFor="resolution-note">Completion note <span className="font-normal text-slate-500">(optional)</span></label>
-      <textarea id="resolution-note" className="field min-h-24 bg-white" maxLength={2000} value={note} onChange={event => setNote(event.target.value)} placeholder="Describe the cleanup completed at the site." />
-      <button className="btn-primary mt-4" disabled={busy || files.length === 0} onClick={submitCleanup}>{busy ? "Uploading evidence…" : detail.task.status === "REWORK_REQUIRED" ? "Resubmit cleanup evidence" : "Submit for supervisor review"}</button>
-    </section>}
-    {detail.task.status === "RESOLUTION_SUBMITTED" && <p className="alert-success">Cleanup evidence has been sent to the supervisor. You will be notified through the task status if rework is needed.</p>}
-  </section>;
+
+      {/* Citizen Complaint Evidence */}
+      <section className="space-y-4">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700">
+          Citizen Complaint Evidence ({detail.complaints.length})
+        </h3>
+        {detail.complaints.map(complaint => (
+          <article className="rounded-xl border border-slate-200/90 bg-slate-50/60 p-4" key={complaint.id}>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+              <div className="flex items-center gap-2">
+                <StatusBadge value={complaint.status} />
+                {complaint.severity && <StatusBadge value={complaint.severity} />}
+              </div>
+              <span className="font-mono text-xs text-slate-400">
+                {complaint.latitude.toFixed(5)}, {complaint.longitude.toFixed(5)}
+              </span>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-slate-800 font-medium">{complaint.description}</p>
+            
+            <div className="mt-4">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Before-Cleanup Photos</p>
+              {beforePhotos(complaint).length ? (
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  {beforePhotos(complaint).map(media => (
+                    <figure className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" key={media.id}>
+                      <PrivateImage assetId={media.id} alt={`Before cleanup: ${media.filename}`} className="h-44 w-full object-cover" />
+                      <figcaption className="truncate p-2 text-[11px] font-medium text-slate-600">{media.filename}</figcaption>
+                    </figure>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-slate-400">No original evidence photo attached.</p>
+              )}
+            </div>
+
+            {afterPhotos(complaint).length > 0 && (
+              <div className="mt-4 pt-3 border-t border-slate-200">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">Submitted After-Cleanup Photos</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                  {afterPhotos(complaint).map(media => (
+                    <figure className="overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-sm" key={media.id}>
+                      <PrivateImage assetId={media.id} alt={`After cleanup: ${media.filename}`} className="h-44 w-full object-cover" />
+                      <figcaption className="truncate p-2 text-[11px] font-medium text-emerald-800">{media.filename}</figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </div>
+            )}
+          </article>
+        ))}
+      </section>
+
+      {message && (
+        <div className={isError ? "alert-error" : "alert-success"}>
+          <p className="font-semibold text-xs">{isError ? "Error" : "Update"}</p>
+          <p className="mt-0.5 text-xs">{message}</p>
+        </div>
+      )}
+
+      {/* Arrival Action Card */}
+      {isAssigned && (
+        <section className="rounded-xl border border-blue-200 bg-blue-50/80 p-5">
+          <h4 className="text-sm font-bold text-blue-950">Reached the Collection Site?</h4>
+          <p className="mt-1 text-xs leading-relaxed text-blue-900">
+            Confirm your arrival to update task status to ON_SITE and unlock after-cleanup evidence submission.
+          </p>
+          <button
+            className="btn-primary btn-sm mt-3 bg-blue-700 hover:bg-blue-800 inline-flex items-center gap-1.5"
+            disabled={busy}
+            onClick={markArrived}
+          >
+            {busy ? (
+              "Updating…"
+            ) : (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>Confirm On-Site Arrival</span>
+              </>
+            )}
+          </button>
+        </section>
+      )}
+
+      {/* Resolution Submission Card */}
+      {canSubmit && (
+        <section className="rounded-xl border border-brand-200 bg-brand-50/70 p-5">
+          <h4 className="text-sm font-bold text-brand-950">Submit Cleanup for Supervisor Verification</h4>
+          <p className="mt-1 text-xs leading-relaxed text-brand-900">
+            Upload clear photographic proof of the cleared site. The complaint will be closed upon supervisor review.
+          </p>
+          
+          <div className="mt-4">
+            <label className="field-label" htmlFor="after-photos">Upload After-Cleanup Photos</label>
+            <input
+              id="after-photos"
+              className="field bg-white text-xs file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-brand-800 hover:file:bg-brand-100"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              onChange={chooseFiles}
+            />
+            {files.length > 0 && (
+              <p className="mt-2 text-xs font-semibold text-brand-800">
+                Selected: {files.map(file => file.name).join(", ")}
+              </p>
+            )}
+          </div>
+
+          <div className="mt-4">
+            <label className="field-label" htmlFor="resolution-note">
+              Completion Notes <span className="font-normal text-slate-500">(Optional)</span>
+            </label>
+            <textarea
+              id="resolution-note"
+              className="field min-h-20 resize-y bg-white text-xs leading-5"
+              maxLength={2000}
+              value={note}
+              onChange={event => setNote(event.target.value)}
+              placeholder="e.g. Cleared 3 bags of municipal debris. Washed surrounding pavement."
+            />
+          </div>
+
+          <button
+            className="btn-primary btn-sm mt-4 w-full sm:w-auto"
+            disabled={busy || files.length === 0}
+            onClick={submitCleanup}
+          >
+            {busy ? "Uploading Evidence…" : detail.task.status === "REWORK_REQUIRED" ? "Resubmit Cleanup Evidence →" : "Submit Cleanup for Review →"}
+          </button>
+        </section>
+      )}
+
+      {detail.task.status === "RESOLUTION_SUBMITTED" && (
+        <div className="alert-success">
+          <p className="font-semibold text-xs">Evidence Under Review</p>
+          <p className="mt-0.5 text-xs">Cleanup evidence has been transmitted to municipal supervisors. You will receive notification if rework is required.</p>
+        </div>
+      )}
+    </section>
+  );
 }
