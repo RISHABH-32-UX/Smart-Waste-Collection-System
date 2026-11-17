@@ -20,7 +20,7 @@ export const ROLE_HOME: Record<Role, string> = {
  * Defaults safely to false (authentication enabled) if missing or invalid.
  */
 export function isAuthBypassed(): boolean {
-  const flag = process.env.NEXT_PUBLIC_BYPASS_AUTH ?? process.env.BYPASS_AUTH;
+  const flag = "false";
   return flag?.trim().toLowerCase() === "true";
 }
 
