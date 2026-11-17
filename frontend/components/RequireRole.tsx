@@ -2,13 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSession, ROLE_HOME, Role } from "../lib/api";
+import { getSession, ROLE_HOME, Role, isAuthBypassed } from "../lib/api";
 
 // Client-side guard complementing middleware.ts — middleware blocks the
 // request using the role cookie; this confirms against the actual session.
 export function RequireRole({ role, children }: { role: Role; children: React.ReactNode }) {
-  const router = useRouter(); const [allowed, setAllowed] = useState(false);
+  const router = useRouter();
+  const [allowed, setAllowed] = useState(isAuthBypassed());
   useEffect(() => {
+    if (isAuthBypassed()) {
+      setAllowed(true);
+      return;
+    }
     const session = getSession();
     if (!session) { router.replace("/login"); return; }
     if (session.role !== role) { router.replace(ROLE_HOME[session.role]); return; }

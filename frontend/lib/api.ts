@@ -14,6 +14,16 @@ export const ROLE_HOME: Record<Role, string> = {
   ADMIN: "/admin",
 };
 
+/**
+ * Checks whether frontend authentication bypass is enabled for development/testing.
+ * Reads NEXT_PUBLIC_BYPASS_AUTH (or BYPASS_AUTH as fallback).
+ * Defaults safely to false (authentication enabled) if missing or invalid.
+ */
+export function isAuthBypassed(): boolean {
+  const flag = process.env.NEXT_PUBLIC_BYPASS_AUTH ?? process.env.BYPASS_AUTH;
+  return flag?.trim().toLowerCase() === "true";
+}
+
 export function getAccessToken() { return typeof window === "undefined" ? null : sessionStorage.getItem("accessToken"); }
 
 export function getSession(): Session | null {
