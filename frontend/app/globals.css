@@ -3,32 +3,106 @@
 @tailwind utilities;
 
 @layer base {
-  :root { color-scheme: light; }
-  * { @apply border-slate-200; }
-  body { @apply min-h-screen bg-slate-50 font-sans text-slate-900 antialiased; }
-  button, input, select, textarea { font: inherit; }
-  button, [role="button"] { @apply touch-manipulation; }
-  ::selection { @apply bg-emerald-200 text-emerald-950; }
+  :root {
+    color-scheme: light;
+  }
+  * {
+    @apply border-slate-200;
+  }
+  body {
+    @apply min-h-screen bg-[#F7FAF9] font-sans text-[#14231D] antialiased selection:bg-brand-100 selection:text-brand-900;
+  }
+  button, input, select, textarea {
+    font: inherit;
+  }
+  button, [role="button"] {
+    @apply touch-manipulation;
+  }
 }
 
 @layer components {
-  .app-shell { @apply mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8; }
-  .page-header { @apply mb-6 border-b border-slate-200 pb-5; }
-  .eyebrow { @apply text-xs font-bold uppercase tracking-[0.16em] text-emerald-700; }
-  .page-title { @apply mt-2 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl; }
-  .page-subtitle { @apply mt-2 max-w-2xl text-sm leading-6 text-slate-600; }
-  .card { @apply rounded-xl border bg-white p-5 shadow-card sm:p-6; }
-  .card-compact { @apply rounded-xl border bg-white p-4 shadow-card; }
-  .field-label { @apply mb-1.5 block text-sm font-semibold text-slate-800; }
-  .field-help { @apply mt-1.5 text-xs leading-5 text-slate-500; }
-  .field { @apply block min-h-11 w-full rounded-lg border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 shadow-sm transition duration-150 placeholder:text-slate-400 hover:border-slate-400 focus:border-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-700/15 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500; }
-  .btn-primary, .btn-secondary, .btn-danger { @apply inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-px; }
-  .btn-primary { @apply bg-emerald-700 text-white hover:bg-emerald-800 focus-visible:outline-emerald-700; }
-  .btn-secondary { @apply border border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-slate-700; }
-  .btn-danger { @apply bg-red-700 text-white hover:bg-red-800 focus-visible:outline-red-700; }
-  .badge { @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold leading-none tracking-wide ring-1 ring-inset; }
-  .badge-role { @apply badge bg-emerald-50 text-emerald-800 ring-emerald-600/20; }
-  .alert-error { @apply rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium leading-5 text-red-800; }
-  .alert-success { @apply rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium leading-5 text-emerald-800; }
-  .empty-state { @apply rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center text-sm leading-6 text-slate-600; }
+  .app-shell {
+    @apply mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8;
+  }
+  .page-header {
+    @apply mb-6 border-b border-slate-200/80 pb-5;
+  }
+  .eyebrow {
+    @apply inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-[0.16em] text-brand-700;
+  }
+  .page-title {
+    @apply mt-2 text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl;
+  }
+  .page-subtitle {
+    @apply mt-2 max-w-2xl text-sm leading-6 text-slate-600;
+  }
+  
+  /* Cards */
+  .card {
+    @apply rounded-xl border border-slate-200/90 bg-white p-5 shadow-card transition-all duration-150 sm:p-6;
+  }
+  .card-hoverable {
+    @apply card hover:border-brand-300 hover:shadow-card-hover;
+  }
+  .card-compact {
+    @apply rounded-xl border border-slate-200/90 bg-white p-4 shadow-card;
+  }
+  
+  /* Form Controls */
+  .field-label {
+    @apply mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700;
+  }
+  .field-help {
+    @apply mt-1.5 text-xs leading-5 text-slate-500;
+  }
+  .field {
+    @apply block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition duration-150 placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-700 focus:outline-none focus:ring-4 focus:ring-brand-700/10 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500;
+  }
+  
+  /* Buttons */
+  .btn-primary, .btn-secondary, .btn-danger {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-px;
+  }
+  .btn-primary {
+    @apply bg-brand-700 text-white shadow-sm hover:bg-brand-800 focus-visible:outline-brand-700;
+  }
+  .btn-secondary {
+    @apply border border-slate-300 bg-white text-slate-700 shadow-sm hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-slate-700;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:outline-red-600;
+  }
+  .btn-sm {
+    @apply min-h-9 px-3 py-1.5 text-xs;
+  }
+  
+  /* Badges */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold leading-tight ring-1 ring-inset;
+  }
+  .badge-role {
+    @apply badge bg-brand-50 text-brand-800 ring-brand-600/20 font-mono;
+  }
+  
+  /* Alerts */
+  .alert-error {
+    @apply rounded-xl border border-red-200 bg-red-50/90 p-4 text-sm font-medium leading-5 text-red-800;
+  }
+  .alert-success {
+    @apply rounded-xl border border-emerald-200 bg-emerald-50/90 p-4 text-sm font-medium leading-5 text-emerald-800;
+  }
+  
+  /* Empty States */
+  .empty-state {
+    @apply rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-8 text-center text-sm leading-6 text-slate-600;
+  }
+}
+
+/* Subtle scrollbar for horizontal subnavs */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
